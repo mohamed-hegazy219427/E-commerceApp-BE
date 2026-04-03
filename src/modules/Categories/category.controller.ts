@@ -1,8 +1,4 @@
-import slugify from 'slugify';
 import type { Request, Response, NextFunction } from 'express';
-import { categoryModel } from '@models/category.model.js';
-import { subCategoryModel } from '@models/subCategory.model.js';
-import { productModel } from '@models/product.model.js';
 import { asyncHandler } from '@utils/asyncHandler.js';
 import { sendSuccess } from '@utils/response.js';
 import { AppError } from '@utils/AppError.js';
@@ -16,41 +12,34 @@ import type {
   UpdateCategoryQueryDTO,
   DeleteCategoryQueryDTO,
 } from './category.validationSchemas.js';
+import { categoryService } from './services/category.service.js';
 
 export const getAllCategories = asyncHandler(async (_req: Request, res: Response) => {
-  const allCategories = await categoryModel
-    .find()
-    .populate([{ path: 'subCategories', populate: [{ path: 'products' }] }]);
+  const allCategories = await categoryService.getAllCategories();
   return sendSuccess(res, { allCategories });
 });
 
 export const createCategory = asyncHandler(
   async (_req: Request, res: Response, next: NextFunction) => {
     const req = _req as TypedRequest<CreateCategoryBodyDTO>;
-    const { name } = req.body;
 
-    if (await categoryModel.findOne({ name })) {
-      return next(new AppError(req.t.category.duplicateName, 409));
-    }
     if (!req.file) return next(new AppError(req.t.category.uploadImage, 400));
 
-    const slug = slugify(name, { trim: true, replacement: '_', lower: true });
     const customId = createCustomId();
-
     req.uploadPath = `${env.PROJECT_FOLDER}/Categories/${customId}`;
     const { public_id, secure_url } = await cloudinary.uploader.upload(req.file.path, {
       folder: req.uploadPath,
     });
 
-    const category = await categoryModel.create({
-      name,
-      slug,
-      customId,
+    const result = await categoryService.createCategory({
+      name: req.body.name,
       image: { public_id, secure_url },
-      createdBy: req.authUser!._id,
+      customId,
+      createdBy: req.authUser!._id as Parameters<typeof categoryService.createCategory>[0]['createdBy'],
     });
+    if (!result.ok) return next(result.error);
 
-    return sendSuccess(res, { category }, req.t.done, 201);
+    return sendSuccess(res, { category: result.value }, req.t.done, 201);
   },
 );
 
@@ -58,54 +47,37 @@ export const updateCategory = asyncHandler(
   async (_req: Request, res: Response, next: NextFunction) => {
     const req = _req as TypedRequest<UpdateCategoryBodyDTO, UpdateCategoryQueryDTO>;
     const { categoryId } = req.query;
-    const { name } = req.body;
 
-    const category = await categoryModel.findById(categoryId);
-    if (!category) return next(new AppError(req.t.category.notFound, 404));
+    const findResult = await categoryService.findById(categoryId);
+    if (!findResult.ok) return next(findResult.error);
+    const category = findResult.value;
 
-    if (name) {
-      if (category.name === name.toLowerCase())
-        return next(new AppError(req.t.category.sameOldName, 400));
-      if (await categoryModel.findOne({ name }))
-        return next(new AppError(req.t.category.duplicateName, 409));
-      category.name = name;
-      category.slug = slugify(name, { trim: true, lower: true, replacement: '_' });
-    }
-
+    let image = category.image;
     if (req.file) {
+      req.uploadPath = `${env.PROJECT_FOLDER}/Categories/${category.customId}`;
       const { secure_url, public_id } = await cloudinary.uploader.upload(req.file.path, {
-        folder: `${env.PROJECT_FOLDER}/Categories/${category.customId}`,
+        folder: req.uploadPath,
       });
       if (category.image?.public_id) await cloudinary.uploader.destroy(category.image.public_id);
-      category.image = { secure_url, public_id };
+      image = { secure_url, public_id };
     }
 
-    await category.save();
-    return sendSuccess(res, { category });
+    const result = await categoryService.updateCategory(category, { name: req.body.name, image });
+    if (!result.ok) return next(result.error);
+
+    return sendSuccess(res, { category: result.value });
   },
 );
 
 export const deleteCategory = asyncHandler(
   async (_req: Request, res: Response, next: NextFunction) => {
     const req = _req as TypedRequest<Record<string, never>, DeleteCategoryQueryDTO>;
-    const { categoryId } = req.query;
 
-    const category = await categoryModel
-      .findByIdAndDelete(categoryId)
-      .populate<{ subCategories: { customId: string }[] }>('subCategories')
-      .populate<{ products: { customId: string }[] }>('products');
-
-    if (!category) return next(new AppError(req.t.category.notFound, 404));
-
-    if (category.subCategories.length) {
-      const result = await subCategoryModel.deleteMany({ categoryId });
-      if (!result.deletedCount)
-        return next(new AppError(req.t.category.deleteSubCategoriesFailed, 500));
-    }
+    const result = await categoryService.deleteCategory(req.query.categoryId);
+    if (!result.ok) return next(result.error);
+    const category = result.value;
 
     if (category.products.length) {
-      const result = await productModel.deleteMany({ categoryId });
-      if (!result.deletedCount) return next(new AppError(req.t.category.deleteProductsFailed, 500));
       for (const product of category.products) {
         await cloudinary.api.delete_resources_by_prefix(
           `${env.PROJECT_FOLDER}/Products/${product.customId}`,

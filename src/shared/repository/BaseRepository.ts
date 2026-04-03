@@ -5,6 +5,7 @@ import type {
   UpdateQuery,
   ClientSession,
   QueryOptions,
+  ProjectionType,
 } from 'mongoose';
 
 //   Base Repository   ──
@@ -38,6 +39,14 @@ export class BaseRepository<TDocument extends Document> {
     return this.model.find(filter, null, options).exec();
   }
 
+  /** Returns plain JS objects — skips Mongoose Document overhead on read-only queries. */
+  findWithLean<TResult = Record<string, unknown>>(
+    filter: FilterQuery<TDocument> = {},
+    projection?: ProjectionType<TDocument>,
+  ): Promise<TResult[]> {
+    return this.model.find(filter, projection).lean<TResult[]>().exec();
+  }
+
   async create<TInput extends object>(data: TInput, session?: ClientSession): Promise<TDocument> {
     const docs = await this.model.create([data], session ? { session } : undefined);
     return docs[0];
@@ -51,8 +60,23 @@ export class BaseRepository<TDocument extends Document> {
     return this.model.findByIdAndUpdate(id, update, { new: true, ...options }).exec();
   }
 
+  /** Filter-based updateOne — more efficient than findByIdAndUpdate when you don't need the doc. */
+  updateOneFilter(
+    filter: FilterQuery<TDocument>,
+    update: UpdateQuery<TDocument>,
+  ): Promise<{ modifiedCount: number }> {
+    return this.model.updateOne(filter, update).exec() as Promise<{ modifiedCount: number }>;
+  }
+
   deleteById(id: string): Promise<TDocument | null> {
     return this.model.findByIdAndDelete(id).exec();
+  }
+
+  /** Logical soft-delete — sets isDeleted=true, deletedAt=now. Requires model to have those fields. */
+  softDeleteById(id: string): Promise<TDocument | null> {
+    return this.model
+      .findByIdAndUpdate(id, { isDeleted: true, deletedAt: new Date() }, { new: true })
+      .exec();
   }
 
   async exists(filter: FilterQuery<TDocument>): Promise<boolean> {

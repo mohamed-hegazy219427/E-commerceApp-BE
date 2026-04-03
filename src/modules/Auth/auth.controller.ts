@@ -1,18 +1,11 @@
-import { userModel } from '@models/user.model.js';
-import { refreshTokenModel } from '@models/refreshToken.model.js';
-import { sendEmailService } from '@services/sendEmailService.js';
-import { emailTemplate } from '@utils/emailTemplate.js';
+import type { Request, Response, NextFunction } from 'express';
 import { asyncHandler } from '@utils/asyncHandler.js';
-import { generateToken, verifyToken } from '@utils/tokenFunctions.js';
 import { sendSuccess } from '@utils/response.js';
 import { AppError } from '@utils/AppError.js';
 import { env } from '@config/env.js';
-import { systemRoles } from '@utils/systemRoles.js';
-import { compareSync } from 'bcrypt';
-import otpGenerator from 'otp-generator';
-import { OAuth2Client } from 'google-auth-library';
-import { customAlphabet } from 'nanoid';
-import type { Request, Response, NextFunction } from 'express';
+import { authService, REFRESH_TOKEN_DAYS } from './services/auth.service.js';
+import { sendEmailService } from '@services/sendEmailService.js';
+import { emailTemplate } from '@utils/emailTemplate.js';
 import type { TypedRequest } from '@types-app/index.js';
 import type {
   SignUpBodyDTO,
@@ -24,42 +17,14 @@ import type {
   LoginWithGoogleBodyDTO,
 } from './auth.validationSchemas.js';
 
-const nanoid = customAlphabet('abcdefghijklmnopqrstuvwxyz0123456789', 6);
-
-const REFRESH_TOKEN_DAYS = 7;
-
-const issueTokens = async (userId: string, email: string, role: string) => {
-  const accessToken = generateToken({
-    payload: { _id: userId, email, role },
-    signature: env.SIGN_IN_TOKEN_SECRET as string,
-    expiresIn: '15m',
-  });
-  const refreshTokenRaw = generateToken({
-    payload: { _id: userId },
-    signature: env.REFRESH_TOKEN_SECRET as string,
-    expiresIn: `${REFRESH_TOKEN_DAYS}d`,
-  });
-  const expiresAt = new Date(Date.now() + REFRESH_TOKEN_DAYS * 24 * 60 * 60 * 1000);
-  await refreshTokenModel.create({ token: refreshTokenRaw, userId, expiresAt });
-  return { accessToken, refreshTokenRaw };
-};
-
 //   Sign Up     ──
 export const signUp = asyncHandler(async (_req: Request, res: Response, next: NextFunction) => {
   const req = _req as TypedRequest<SignUpBodyDTO>;
   const { userName, email, password, address, gender, age, phoneNumber, role } = req.body;
 
-  if (await userModel.findOne({ email })) {
-    return next(new AppError(req.t.auth.emailExists, 409));
-  }
+  const confirmationToken = authService.generateConfirmationToken(email);
+  const confirmationLink = `${req.protocol}://${req.headers.host}/api/v1/auth/confirm/${confirmationToken}`;
 
-  const token = generateToken({
-    payload: { email },
-    signature: env.CONFIRMATION_EMAIL_TOKEN as string,
-    expiresIn: '1h',
-  });
-
-  const confirmationLink = `${req.protocol}://${req.headers.host}/api/v1/auth/confirm/${token}`;
   const sent = await sendEmailService({
     to: email,
     subject: 'Confirm your email',
@@ -69,14 +34,13 @@ export const signUp = asyncHandler(async (_req: Request, res: Response, next: Ne
       subject: 'Confirm your email',
     }),
   });
-
   if (!sent) return next(new AppError(req.t.auth.failConfirmEmail, 500));
 
-  const user = await userModel.create({
+  const user = await authService.createUser({
     userName,
     email,
     password,
-    address,
+    address: address as unknown[],
     gender,
     age,
     phoneNumber,
@@ -94,20 +58,10 @@ export const confirmEmail = asyncHandler(
       Record<string, string>,
       ConfirmEmailParamsDTO
     >;
-    const { token } = req.params;
 
-    const tokenResult = verifyToken<{ email: string }>({
-      token,
-      signature: env.CONFIRMATION_EMAIL_TOKEN as string,
-    });
-    if (!tokenResult.ok) return next(tokenResult.error);
-    const { email } = tokenResult.value;
+    const result = await authService.confirmEmail(req.params.token);
+    if (!result.ok) return next(result.error);
 
-    const user = await userModel.findOne({ email });
-    if (!user) return next(new AppError(req.t.auth.invalidEmail, 400));
-    if (user.isConfirmed) return next(new AppError(req.t.auth.alreadyConfirmed, 400));
-
-    await user.updateOne({ isConfirmed: true });
     return sendSuccess(res, null, req.t.auth.confirmedDone);
   },
 );
@@ -117,19 +71,16 @@ export const logIn = asyncHandler(async (_req: Request, res: Response, next: Nex
   const req = _req as TypedRequest<LoginBodyDTO>;
   const { email, password } = req.body;
 
-  const user = await userModel.findOne({ email });
-  if (!user) return next(new AppError(req.t.auth.invalidEmail, 400));
-  if (!user.isConfirmed) return next(new AppError(req.t.auth.notConfirmed, 400));
-  if (!compareSync(password, user.password))
-    return next(new AppError(req.t.auth.invalidPassword, 400));
+  const validationResult = await authService.validateCredentials(email, password);
+  if (!validationResult.ok) return next(validationResult.error);
+  const user = validationResult.value;
 
-  const { accessToken, refreshTokenRaw } = await issueTokens(
+  const { accessToken, refreshTokenRaw } = await authService.issueTokens(
     String(user._id),
     user.email,
     user.role,
   );
-
-  await user.updateOne({ status: 'Online' });
+  await authService.setUserOnline(String(user._id));
 
   res.cookie('refreshToken', refreshTokenRaw, {
     httpOnly: true,
@@ -147,34 +98,17 @@ export const refreshToken = asyncHandler(
     const token = req.cookies?.refreshToken as string | undefined;
     if (!token) return next(new AppError(req.t.auth.loginFirst, 401));
 
-    const stored = await refreshTokenModel.findOne({ token, isRevoked: false });
-    if (!stored) return next(new AppError(req.t.auth.invalidToken, 401));
+    const result = await authService.refreshAccessToken(token);
+    if (!result.ok) return next(result.error);
 
-    const decoded = verifyToken<{ _id: string }>({
-      token,
-      signature: env.REFRESH_TOKEN_SECRET as string,
-    });
-    if (!decoded.ok) return next(decoded.error);
-
-    const user = await userModel.findById(decoded.value._id);
-    if (!user) return next(new AppError(req.t.auth.pleaseSignup, 401));
-
-    const accessToken = generateToken({
-      payload: { _id: String(user._id), email: user.email, role: user.role },
-      signature: env.SIGN_IN_TOKEN_SECRET as string,
-      expiresIn: '15m',
-    });
-
-    return sendSuccess(res, { accessToken }, req.t.auth.tokenRefreshed);
+    return sendSuccess(res, { accessToken: result.value }, req.t.auth.tokenRefreshed);
   },
 );
 
 //   Logout      ──
 export const logout = asyncHandler(async (req: Request, res: Response) => {
   const token = req.cookies?.refreshToken as string | undefined;
-  if (token) {
-    await refreshTokenModel.findOneAndUpdate({ token }, { isRevoked: true });
-  }
+  if (token) await authService.revokeRefreshToken(token);
   res.clearCookie('refreshToken');
   return sendSuccess(res, null, req.t.auth.logoutDone);
 });
@@ -183,30 +117,19 @@ export const logout = asyncHandler(async (req: Request, res: Response) => {
 export const forgetPassword = asyncHandler(
   async (_req: Request, res: Response, next: NextFunction) => {
     const req = _req as TypedRequest<ForgetPasswordBodyDTO>;
-    const { email } = req.body;
 
-    const user = await userModel.findOne({ email });
-    if (!user) return next(new AppError(req.t.auth.invalidEmail, 400));
-
-    const otp = otpGenerator.generate(4, {
-      upperCaseAlphabets: false,
-      specialChars: false,
-    });
-    const token = generateToken({
-      payload: { email, otp },
-      expiresIn: '1h',
-      signature: env.RESET_PASSWORD_SIGNATURE as string,
-    });
+    const result = await authService.initiatePasswordReset(req.body.email);
+    if (!result.ok) return next(result.error);
+    const { resetToken } = result.value;
 
     const sent = await sendEmailService({
-      to: email,
+      to: req.body.email,
       subject: 'Reset your password',
-      message: emailTemplate({ subject: 'Reset Password', otp }),
+      message: emailTemplate({ subject: 'Reset Password', otp: result.value.otp }),
     });
     if (!sent) return next(new AppError(req.t.auth.failSendResetEmail, 500));
 
-    await user.updateOne({ forgetCode: otp });
-    return sendSuccess(res, { resetPasswordToken: token }, req.t.auth.checkEmail);
+    return sendSuccess(res, { resetPasswordToken: resetToken }, req.t.auth.checkEmail);
   },
 );
 
@@ -218,22 +141,13 @@ export const resetPassword = asyncHandler(
       Record<string, string>,
       ResetPasswordParamsDTO
     >;
-    const { token } = req.params;
-    const { newPassword, otp } = req.body;
 
-    const decoded = verifyToken<{ email: string; otp: string }>({
-      token,
-      signature: env.RESET_PASSWORD_SIGNATURE as string,
-    });
-    if (!decoded.ok) return next(decoded.error);
-    if (otp !== decoded.value.otp) return next(new AppError(req.t.auth.invalidOtp, 400));
-
-    const user = await userModel.findOne({ email: decoded.value.email, forgetCode: otp });
-    if (!user) return next(new AppError(req.t.auth.alreadyResetPassword, 400));
-
-    user.password = newPassword;
-    user.forgetCode = undefined;
-    await user.save();
+    const result = await authService.resetPassword(
+      req.params.token,
+      req.body.otp,
+      req.body.newPassword,
+    );
+    if (!result.ok) return next(result.error);
 
     return sendSuccess(res, null, req.t.auth.passwordResetSuccess);
   },
@@ -243,39 +157,16 @@ export const resetPassword = asyncHandler(
 export const loginWithGoogle = asyncHandler(
   async (_req: Request, res: Response, next: NextFunction) => {
     const req = _req as TypedRequest<LoginWithGoogleBodyDTO>;
-    const { idToken } = req.body;
 
-    const client = new OAuth2Client(env.GOOGLE_CLIENT_ID);
-    const ticket = await client.verifyIdToken({
-      idToken,
-      audience: env.GOOGLE_CLIENT_ID,
-    });
-    const payload = ticket.getPayload();
-    if (!payload?.email_verified || !payload.email) {
-      return next(new AppError(req.t.auth.invalidEmail, 400));
-    }
+    const result = await authService.loginWithGoogle(req.body.idToken);
+    if (!result.ok) return next(result.error);
+    const user = result.value;
 
-    const { email, name } = payload;
-    let user = await userModel.findOne({ email });
-
-    if (!user) {
-      user = await userModel.create({
-        userName: name ?? email.split('@')[0],
-        email,
-        password: nanoid(),
-        provider: 'google',
-        isConfirmed: true,
-        phoneNumber: '0000000000',
-        role: systemRoles.USER,
-      });
-    }
-
-    const { accessToken, refreshTokenRaw } = await issueTokens(
+    const { accessToken, refreshTokenRaw } = await authService.issueTokens(
       String(user._id),
       user.email,
       user.role,
     );
-    await user.updateOne({ provider: 'google', status: 'Online' });
 
     res.cookie('refreshToken', refreshTokenRaw, {
       httpOnly: true,

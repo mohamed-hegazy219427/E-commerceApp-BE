@@ -2,7 +2,7 @@
 export const ProcessSignals = {
   SIGTERM: 'SIGTERM',
   SIGINT: 'SIGINT',
-} as const;
+};
 
 export type ProcessSignal = (typeof ProcessSignals)[keyof typeof ProcessSignals];
 
@@ -18,12 +18,12 @@ export const ModelNames = {
   CART: 'Cart',
   ORDER: 'Order',
   REFRESH_TOKEN: 'RefreshToken',
-} as const;
+};
 
 export type ModelName = (typeof ModelNames)[keyof typeof ModelNames];
 
 //   API Routes     ─
-const API_PREFIX = '/api/v1' as const;
+const API_PREFIX = '/api/v1';
 
 export const ROUTES = {
   AUTH: `${API_PREFIX}/auth`,
@@ -36,6 +36,6 @@ export const ROUTES = {
   ORDER: `${API_PREFIX}/order`,
   REVIEW: `${API_PREFIX}/review`,
   GRAPHQL_CATEGORY: `${API_PREFIX}/graphqlCategory`,
-} as const;
+};
 
 export type RoutePath = (typeof ROUTES)[keyof typeof ROUTES];
