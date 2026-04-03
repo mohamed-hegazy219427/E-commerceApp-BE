@@ -102,6 +102,12 @@ export class ApiFeature<T extends Document> {
     return this;
   }
 
+  /** Skips Mongoose document features for better performance on read-only queries. */
+  lean(): this {
+    this.mongooseQuery = this.mongooseQuery.lean() as unknown as typeof this.mongooseQuery;
+    return this;
+  }
+
   /** Execute and return matching documents. */
   execute(): Promise<T[]> {
     return this.mongooseQuery.exec();

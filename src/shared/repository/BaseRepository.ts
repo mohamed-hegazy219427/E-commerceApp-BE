@@ -19,7 +19,7 @@ import type {
 //
 
 export class BaseRepository<TDocument extends Document> {
-  constructor(protected readonly model: Model<TDocument>) {}
+  constructor(public readonly model: Model<TDocument>) {}
 
   findById(id: string, options?: QueryOptions<TDocument>): Promise<TDocument | null> {
     return this.model.findById(id, null, options).exec();
@@ -84,6 +84,6 @@ export class BaseRepository<TDocument extends Document> {
   }
 
   countDocuments(filter: FilterQuery<TDocument> = {}): Promise<number> {
-    return this.model.countDocuments(filter).exec() as Promise<number>;
+    return this.model.countDocuments(filter).exec() 
   }
 }

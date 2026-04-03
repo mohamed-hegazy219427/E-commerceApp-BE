@@ -4,7 +4,7 @@ import { ar } from './ar.js';
 export type Lang = 'en' | 'ar';
 export type Translations = typeof en;
 
-const translations = { en, ar } as const;
+const translations = { en, ar }
 
 /**
  * Returns the translation dictionary for the given language.

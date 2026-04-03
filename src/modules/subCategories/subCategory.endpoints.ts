@@ -4,4 +4,4 @@ export const subCategoryRoles = {
   createSubCategory: [systemRoles.ADMIN, systemRoles.SUPER_ADMIN],
   updateSubCategory: [systemRoles.ADMIN, systemRoles.SUPER_ADMIN],
   deleteSubCategory: [systemRoles.ADMIN, systemRoles.SUPER_ADMIN],
-} as const;
+}   

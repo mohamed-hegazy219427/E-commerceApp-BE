@@ -113,4 +113,4 @@ export const ar = {
     buyFirst: 'يجب شراء المنتج أولاً قبل التقييم',
     failAdd: 'فشل إضافة التقييم',
   },
-} as const;
+}   

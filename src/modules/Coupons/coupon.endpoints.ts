@@ -4,4 +4,4 @@ export const couponRoles = {
   addCoupon: [systemRoles.ADMIN, systemRoles.SUPER_ADMIN],
   deleteCoupon: [systemRoles.ADMIN, systemRoles.SUPER_ADMIN],
   assignUserToCoupon: [systemRoles.ADMIN, systemRoles.SUPER_ADMIN],
-} as const;
+}   

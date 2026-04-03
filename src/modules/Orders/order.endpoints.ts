@@ -5,4 +5,4 @@ export const orderRoles = {
   fromCartToOrder: [systemRoles.USER, systemRoles.ADMIN, systemRoles.SUPER_ADMIN],
   deliverOrder: [systemRoles.ADMIN, systemRoles.SUPER_ADMIN],
   cancelOrder: [systemRoles.USER, systemRoles.ADMIN, systemRoles.SUPER_ADMIN],
-} as const;
+}   

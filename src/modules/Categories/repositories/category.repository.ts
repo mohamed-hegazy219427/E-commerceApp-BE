@@ -1,6 +1,6 @@
 import { BaseRepository } from '@repository/BaseRepository.js';
 import { categoryModel } from '@models/category.model.js';
-import type { ICategoryDocument } from '@models/category.model.js';
+import type { ICategoryDocument, ICategory } from '@models/category.model.js';
 
 export class CategoryRepository extends BaseRepository<ICategoryDocument> {
   constructor() {
@@ -12,10 +12,11 @@ export class CategoryRepository extends BaseRepository<ICategoryDocument> {
   }
 
   /** Returns all categories with their subCategories and products populated. */
-  findAllPopulated(): Promise<ICategoryDocument[]> {
+  findAllPopulated(): Promise<ICategory[]> {
     return categoryModel
       .find()
       .populate([{ path: 'subCategories', populate: [{ path: 'products' }] }])
+      .lean<ICategory[]>()
       .exec();
   }
 

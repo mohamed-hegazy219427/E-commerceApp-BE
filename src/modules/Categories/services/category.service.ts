@@ -7,6 +7,8 @@ import type { ICategoryDocument } from '@models/category.model.js';
 import { subCategoryModel } from '@models/subCategory.model.js';
 import { productModel } from '@models/product.model.js';
 import { categoryRepository } from '../repositories/category.repository.js';
+import { cacheService } from '@services/cache.service.js';
+
 
 export interface CreateCategoryInput {
   name: string;
@@ -29,8 +31,13 @@ const toSlug = (name: string) =>
   slugify(name, { trim: true, replacement: '_', lower: true });
 
 class CategoryService {
-  getAllCategories(): Promise<ICategoryDocument[]> {
-    return categoryRepository.findAllPopulated();
+  async getAllCategories(): Promise<ICategoryDocument[]> {
+    const cached = await cacheService.get<ICategoryDocument[]>('categories:all');
+    if (cached) return cached;
+
+    const categories = await categoryRepository.findAllPopulated();
+    await cacheService.set('categories:all', categories, 300);
+    return categories;
   }
 
   async createCategory(input: CreateCategoryInput): Promise<Result<ICategoryDocument>> {
@@ -46,6 +53,7 @@ class CategoryService {
       createdBy: input.createdBy,
     });
 
+    await cacheService.del('categories:all');
     return ok(category);
   }
 
@@ -76,6 +84,7 @@ class CategoryService {
     }
 
     await category.save();
+    await cacheService.del('categories:all');
     return ok(category);
   }
 
@@ -95,6 +104,7 @@ class CategoryService {
       await productModel.deleteMany({ categoryId });
     }
 
+    await cacheService.del('categories:all');
     return ok(category as CategoryWithRelations);
   }
 }

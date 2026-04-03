@@ -6,11 +6,15 @@ import { paginationFunction, buildPaginationMeta } from '@utils/pagination.js';
 import { ApiFeature } from '@utils/apiFeature.js';
 import { productModel } from '@models/product.model.js';
 import type { Result } from '@utils/result.js';
-import type { IProductDocument } from '@models/product.model.js';
+import type { IProductDocument, IProduct } from '@models/product.model.js';
+import { cacheService } from '@services/cache.service.js';
+
 import type { PaginationMeta } from '@types-app/index.js';
 import { subCategoryRepository } from '../../subCategories/repositories/subCategory.repository.js';
 import { brandRepository } from '../../Brands/repositories/brand.repository.js';
 import { productRepository } from '../repositories/product.repository.js';
+import { cursorPaginate } from '@utils/cursorPagination.js';
+
 
 interface PopulatedWithId {
   categoryId: { _id: Types.ObjectId };
@@ -46,8 +50,10 @@ export interface UpdateProductInput {
 }
 
 export interface ProductListResult {
-  products: IProductDocument[];
-  pagination: PaginationMeta;
+  products: IProduct[];
+  pagination?: PaginationMeta;
+  nextCursor?: string | null;
+  hasMore?: boolean;
 }
 
 class ProductService {
@@ -85,6 +91,7 @@ class ProductService {
       createdBy: input.createdBy,
     });
 
+    await cacheService.invalidateByPrefix('products:');
     return ok(product);
   }
 
@@ -145,10 +152,15 @@ class ProductService {
     }
 
     await product.save();
+    await cacheService.invalidateByPrefix('products:');
     return ok(product);
   }
 
   async getAllProducts(page: string, size: string): Promise<ProductListResult> {
+    const cacheKey = `products:page:${page}:${size}`;
+    const cached = await cacheService.get<ProductListResult>(cacheKey);
+    if (cached) return cached;
+
     const { limit, skip, page: currentPage } = paginationFunction({
       page: parseInt(page ?? '1'),
       size: parseInt(size ?? '10'),
@@ -159,32 +171,45 @@ class ProductService {
       productRepository.countDocuments(),
     ]);
 
-    return { products, pagination: buildPaginationMeta({ page: currentPage, limit, total }) };
+    const result = { products, pagination: buildPaginationMeta({ page: currentPage, limit, total }) };
+    await cacheService.set(cacheKey, result, 300);
+    return result;
   }
 
-  searchByTitle(title: string): Promise<IProductDocument[]> {
+  searchByTitle(title: string): Promise<IProduct[]> {
     return productRepository.findByTitleRegex(title);
   }
 
   async listProducts(query: Record<string, string>): Promise<ProductListResult> {
-    const { limit, page: currentPage } = paginationFunction({
-      page: parseInt(query.page ?? '1'),
-      size: parseInt(query.size ?? '10'),
-    });
-
+    const limit = parseInt(query.size ?? '10');
     const apiFeature = new ApiFeature(productModel.find(), query)
       .filters()
-      .search(['title', 'desc'])
-      .sort()
-      .select()
-      .pagination();
+      .search(['title', 'desc']);
+    
+    const filter = apiFeature.mongooseQuery.getFilter();
+
+    if (query.cursor) {
+      const { data, nextCursor, hasMore } = await cursorPaginate<IProduct>(
+        productModel,
+        filter,
+        limit,
+        query.cursor
+      );
+      return { products: data, nextCursor, hasMore };
+    }
+
+    const currentPage = parseInt(query.page ?? '1');
+    const skip = (currentPage - 1) * limit;
 
     const [data, total] = await Promise.all([
-      apiFeature.mongooseQuery,
-      productRepository.countDocuments(),
+      apiFeature.sort().select().lean().mongooseQuery.limit(limit).skip(skip),
+      productRepository.countDocuments(filter),
     ]);
 
-    return { products: data, pagination: buildPaginationMeta({ page: currentPage, limit, total }) };
+    return { 
+      products: data as IProduct[], 
+      pagination: buildPaginationMeta({ page: currentPage, limit, total }) 
+    };
   }
 }
 

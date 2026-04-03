@@ -37,6 +37,6 @@ export const ROUTES = {
   REVIEW: `${API_PREFIX}/review`,
   GRAPHQL_CATEGORY: `${API_PREFIX}/graphqlCategory`,
   GRAPHQL: `${API_PREFIX}/graphql`,
-} as const;
+};
 
 export type RoutePath = (typeof ROUTES)[keyof typeof ROUTES];

@@ -6,6 +6,9 @@ import type { IReviewDocument } from '@models/review.model.js';
 import { productRepository } from '../../Products/repositories/product.repository.js';
 import { orderRepository } from '../../Orders/repositories/order.repository.js';
 import { reviewRepository } from '../repositories/review.repository.js';
+import { reviewModel, type IReview } from '@models/review.model.js';
+import { cursorPaginate, type CursorPage } from '@utils/cursorPagination.js';
+
 
 class ReviewService {
   async addReview(
@@ -27,6 +30,10 @@ class ReviewService {
 
     const review = await reviewRepository.create({ userId, productId, comment, rate });
     return ok({ review });
+  }
+
+  async getReviews(productId: string, limit: number, cursor?: string): Promise<CursorPage<IReview>> {
+    return cursorPaginate<IReview>(reviewModel, { productId }, limit, cursor);
   }
 }
 

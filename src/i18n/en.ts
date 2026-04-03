@@ -113,6 +113,6 @@ export const en = {
     buyFirst: 'You must purchase this product before reviewing it',
     failAdd: 'Failed to add review',
   },
-} as const;
+}
 
 export type TranslationKeys = typeof en;

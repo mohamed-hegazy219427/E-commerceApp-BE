@@ -8,6 +8,8 @@ import { productModel } from '@models/product.model.js';
 import { categoryModel } from '@models/category.model.js';
 import { subCategoryModel } from '@models/subCategory.model.js';
 import { brandRepository } from '../repositories/brand.repository.js';
+import { cacheService } from '@services/cache.service.js';
+
 
 export interface CreateBrandInput {
   name: string;
@@ -88,16 +90,26 @@ class BrandService {
 
   /** Returns unique brands associated with a given categoryId via its products. */
   async getBrandsByCategoryId(categoryId: string): Promise<Result<unknown[]>> {
+    const cacheKey = `brands:cat:${categoryId}`;
+    const cached = await cacheService.get<unknown[]>(cacheKey);
+    if (cached) return ok(cached);
+
     if (!(await categoryModel.findById(categoryId))) {
       return fail(new AppError('Category not found', 404));
     }
     const products = await productModel.find({ categoryId }).select('brandId').populate('brandId');
-    const brands = [...new Map(products.map((p) => [String(p.brandId), p.brandId])).values()];
+    const brands = [...new Map(products.map((p: any) => [String(p.brandId), p.brandId])).values()];
+    
+    await cacheService.set(cacheKey, brands, 300);
     return ok(brands);
   }
 
   /** Returns unique brands associated with a given subCategoryId via its products. */
   async getBrandsBySubCategoryId(subCategoryId: string): Promise<Result<unknown[]>> {
+    const cacheKey = `brands:subcat:${subCategoryId}`;
+    const cached = await cacheService.get<unknown[]>(cacheKey);
+    if (cached) return ok(cached);
+
     if (!(await subCategoryModel.findById(subCategoryId))) {
       return fail(new AppError('SubCategory not found', 404));
     }
@@ -105,7 +117,9 @@ class BrandService {
       .find({ subCategoryId })
       .select('brandId')
       .populate('brandId');
-    const brands = [...new Map(products.map((p) => [String(p.brandId), p.brandId])).values()];
+    const brands = [...new Map(products.map((p: any) => [String(p.brandId), p.brandId])).values()];
+    
+    await cacheService.set(cacheKey, brands, 300);
     return ok(brands);
   }
 }

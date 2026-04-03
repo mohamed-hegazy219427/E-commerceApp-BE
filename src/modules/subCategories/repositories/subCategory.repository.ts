@@ -1,6 +1,6 @@
 import { BaseRepository } from '@repository/BaseRepository.js';
 import { subCategoryModel } from '@models/subCategory.model.js';
-import type { ISubCategoryDocument } from '@models/subCategory.model.js';
+import type { ISubCategoryDocument, ISubCategory } from '@models/subCategory.model.js';
 
 export class SubCategoryRepository extends BaseRepository<ISubCategoryDocument> {
   constructor() {
@@ -11,8 +11,8 @@ export class SubCategoryRepository extends BaseRepository<ISubCategoryDocument> 
     return this.findOne({ name });
   }
 
-  findAllWithCategory(): Promise<ISubCategoryDocument[]> {
-    return subCategoryModel.find().populate('categoryId').exec();
+  findAllWithCategory(): Promise<ISubCategory[]> {
+    return subCategoryModel.find().populate('categoryId').lean<ISubCategory[]>().exec();
   }
 
   /** Find subCategory with its products populated (needed for cascade delete). */

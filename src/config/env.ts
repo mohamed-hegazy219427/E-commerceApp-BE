@@ -51,6 +51,7 @@ const envSchema = z.object({
   FACEBOOK_LINK: z.string().optional(),
   INSTAGRAM_LINK: z.string().optional(),
   TWITTER_LINK: z.string().optional(),
+  REDIS_URL: z.string().default(''),
 });
 
 const _parsed = envSchema.safeParse(process.env);
@@ -87,6 +88,7 @@ export const env = Object.freeze({
   STRIPE_WEBHOOK_SECRET: secret(_data.STRIPE_WEBHOOK_SECRET),
   CLOUDINARY_API_SECRET: secret(_data.CLOUDINARY_API_SECRET),
   EMAIL_PASSWORD: secret(_data.EMAIL_PASSWORD),
+  REDIS_URL: _data.REDIS_URL,
 });
 
 export type Env = typeof env;

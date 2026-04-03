@@ -2,7 +2,7 @@ import { z, type ZodSchema, type ZodError } from 'zod';
 import { Types } from 'mongoose';
 import type { Request, Response, NextFunction, RequestHandler } from 'express';
 
-const REQ_SOURCES = ['body', 'query', 'params', 'headers', 'file', 'files'] as const;
+const REQ_SOURCES = ['body', 'query', 'params', 'headers', 'file', 'files']
 type ReqSource = (typeof REQ_SOURCES)[number];
 
 export type ValidationSchema = Partial<Record<ReqSource, ZodSchema>>;
