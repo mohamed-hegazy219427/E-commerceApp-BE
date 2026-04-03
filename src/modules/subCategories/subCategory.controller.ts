@@ -14,6 +14,7 @@ import type {
   DeleteSubCategoryQueryDTO,
 } from './subCategory.validationSchemas.js';
 import { subCategoryService } from './services/subCategory.service.js';
+import { categoryService } from '../Categories/services/category.service.js';
 
 export const getAllSubCategories = asyncHandler(async (_req: Request, res: Response) => {
   const allSubCategories = await subCategoryService.getAllSubCategories();
@@ -23,20 +24,16 @@ export const getAllSubCategories = asyncHandler(async (_req: Request, res: Respo
 export const createSubCategory = asyncHandler(
   async (_req: Request, res: Response, next: NextFunction) => {
     const req = _req as TypedRequest<CreateSubCategoryBodyDTO, CreateSubCategoryQueryDTO>;
+    const { categoryId } = req.query;
+
+    // Fetch parent category to get customId for the upload folder path
+    const catResult = await categoryService.findById(categoryId);
+    if (!catResult.ok) return next(catResult.error);
 
     if (!req.file) return next(new AppError(req.t.subCategory.uploadImage, 400));
 
-    // We need parent category's customId for the upload path.
-    // Service provides it via findByIdWithCategory, but we need it BEFORE upload.
-    // So we call a lightweight category lookup here.
-    const { categoryId } = req.query;
-    const categoryResult = await subCategoryService['getCategoryCustomId']
-      ? (await (subCategoryService as unknown as { getCategoryCustomId: (id: string) => Promise<string | null> }).getCategoryCustomId(categoryId))
-      : null;
-
-    // Simpler approach: use categoryId directly in the path since we validate it in service
     const customId = createCustomId();
-    req.uploadPath = `${env.PROJECT_FOLDER}/SubCategories/${customId}`;
+    req.uploadPath = `${env.PROJECT_FOLDER}/Categories/${catResult.value.customId}/SubCategories/${customId}`;
     const { secure_url, public_id } = await cloudinary.uploader.upload(req.file.path, {
       folder: req.uploadPath,
     });
@@ -57,9 +54,8 @@ export const createSubCategory = asyncHandler(
 export const updateSubCategory = asyncHandler(
   async (_req: Request, res: Response, next: NextFunction) => {
     const req = _req as TypedRequest<UpdateSubCategoryBodyDTO, UpdateSubCategoryQueryDTO>;
-    const { subCategoryId } = req.query;
 
-    const findResult = await subCategoryService.findByIdWithCategory(subCategoryId);
+    const findResult = await subCategoryService.findByIdWithCategory(req.query.subCategoryId);
     if (!findResult.ok) return next(findResult.error);
     const { subCategory, categoryCustomId } = findResult.value;
 

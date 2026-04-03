@@ -1,9 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
-import { Types } from 'mongoose';
-import { couponModel } from '@models/coupon.model.js';
+import type { Types } from 'mongoose';
 import { asyncHandler } from '@utils/asyncHandler.js';
 import { sendSuccess } from '@utils/response.js';
-import { AppError } from '@utils/AppError.js';
 import type { TypedRequest } from '@types-app/index.js';
 import type {
   AddCouponBodyDTO,
@@ -11,64 +9,51 @@ import type {
   AssignUserBodyDTO,
   AssignUserQueryDTO,
 } from './coupon.validationSchemas.js';
+import { couponService } from './services/coupon.service.js';
 
 export const addCoupon = asyncHandler(async (_req: Request, res: Response, next: NextFunction) => {
   const req = _req as TypedRequest<AddCouponBodyDTO>;
   const { couponCode, couponAmount, isPercentage, isFixedAmount, fromDate, toDate } = req.body;
 
-  if (await couponModel.findOne({ couponCode })) {
-    return next(new AppError(req.t.coupon.duplicateCode, 409));
-  }
-  if ((!isFixedAmount && !isPercentage) || (isFixedAmount && isPercentage)) {
-    return next(new AppError(req.t.coupon.selectType, 400));
-  }
-
-  const coupon = await couponModel.create({
+  const result = await couponService.createCoupon({
     couponCode,
     couponAmount,
     isPercentage,
     isFixedAmount,
     fromDate,
     toDate,
-    createdBy: req.authUser!._id,
+    createdBy: req.authUser!._id as Types.ObjectId,
   });
+  if (!result.ok) return next(result.error);
 
-  return sendSuccess(res, { coupon }, req.t.done, 201);
+  return sendSuccess(res, { coupon: result.value }, req.t.done, 201);
 });
 
 export const deleteCoupon = asyncHandler(
   async (_req: Request, res: Response, next: NextFunction) => {
     const req = _req as TypedRequest<Record<string, never>, DeleteCouponQueryDTO>;
-    const { couponId } = req.query;
 
-    const coupon = await couponModel.findOneAndDelete({
-      _id: couponId,
-      createdBy: req.authUser!._id,
-    });
-    if (!coupon) return next(new AppError(req.t.coupon.notFound, 404));
-    return sendSuccess(res, { coupon });
+    const result = await couponService.deleteCoupon(
+      req.query.couponId,
+      req.authUser!._id as Types.ObjectId,
+    );
+    if (!result.ok) return next(result.error);
+
+    return sendSuccess(res, { coupon: result.value });
   },
 );
 
 export const assignUserToCoupon = asyncHandler(
   async (_req: Request, res: Response, next: NextFunction) => {
     const req = _req as TypedRequest<AssignUserBodyDTO, AssignUserQueryDTO>;
-    const { couponId } = req.query;
-    const { userId, maxUsage } = req.body;
 
-    const coupon = await couponModel.findById(couponId);
-    if (!coupon) return next(new AppError(req.t.coupon.notFound, 404));
+    const result = await couponService.assignUser(
+      req.query.couponId,
+      req.body.userId,
+      req.body.maxUsage,
+    );
+    if (!result.ok) return next(result.error);
 
-    const alreadyAssigned = coupon.couponAssignedUsers.some((u) => u.userId.toString() === userId);
-    if (alreadyAssigned) return next(new AppError('User already assigned to this coupon', 409));
-
-    coupon.couponAssignedUsers.push({
-      userId: new Types.ObjectId(userId),
-      maxUsage,
-      usageCount: 0,
-    });
-    await coupon.save();
-
-    return sendSuccess(res, { coupon });
+    return sendSuccess(res, { coupon: result.value });
   },
 );

@@ -1,83 +1,41 @@
 import type { Request, Response, NextFunction } from 'express';
-import { Types } from 'mongoose';
-import { productModel } from '@models/product.model.js';
-import { cartModel } from '@models/cart.model.js';
+import type { Types } from 'mongoose';
 import { asyncHandler } from '@utils/asyncHandler.js';
 import { sendSuccess } from '@utils/response.js';
-import { AppError } from '@utils/AppError.js';
 import type { TypedRequest } from '@types-app/index.js';
 import type { AddToCartBodyDTO, DeleteFromCartBodyDTO } from './cart.validationSchemas.js';
+import { cartService } from './services/cart.service.js';
 
 export const addToCart = asyncHandler(async (_req: Request, res: Response, next: NextFunction) => {
   const req = _req as TypedRequest<AddToCartBodyDTO>;
-  const userId = req.authUser!._id;
-  const { productId, quantity } = req.body;
 
-  const product = await productModel.findById(productId);
-  if (!product) return next(new AppError(req.t.cart.invalidProductId, 404));
-  if (product.stock < quantity) return next(new AppError(req.t.cart.stockExceeded, 400));
+  const result = await cartService.addToCart(
+    req.authUser!._id as Types.ObjectId,
+    req.body.productId,
+    req.body.quantity,
+  );
+  if (!result.ok) return next(result.error);
 
-  let cart = await cartModel.findOne({ userId });
-
-  if (cart) {
-    const existingItem = cart.products.find((p) => p.productId.toString() === productId);
-    if (existingItem) {
-      existingItem.quantity = quantity;
-    } else {
-      cart.products.push({
-        productId: new Types.ObjectId(productId),
-        quantity,
-      });
-    }
-
-    let subTotal = 0;
-    for (const item of cart.products) {
-      const p = await productModel.findById(item.productId);
-      if (p) subTotal += p.priceAfterDiscount * item.quantity;
-    }
-    cart.subTotal = subTotal;
-    await cart.save();
-  } else {
-    cart = await cartModel.create({
-      userId,
-      products: [{ productId, quantity }],
-      subTotal: product.priceAfterDiscount * quantity,
-    });
-  }
-
-  return sendSuccess(res, { cart });
+  return sendSuccess(res, { cart: result.value });
 });
 
 export const deleteFromCart = asyncHandler(
   async (_req: Request, res: Response, next: NextFunction) => {
     const req = _req as TypedRequest<DeleteFromCartBodyDTO>;
-    const userId = req.authUser!._id;
-    const { productId } = req.body;
 
-    const product = await productModel.findById(productId);
-    if (!product) return next(new AppError(req.t.cart.invalidProductId, 404));
+    const result = await cartService.deleteFromCart(
+      req.authUser!._id as Types.ObjectId,
+      req.body.productId,
+    );
+    if (!result.ok) return next(result.error);
 
-    const cart = await cartModel.findOne({ userId, 'products.productId': productId });
-    if (!cart) return next(new AppError(req.t.cart.productNotInCart, 404));
-
-    const item = cart.products.find((p) => p.productId.toString() === productId);
-    if (item) {
-      cart.subTotal -= product.priceAfterDiscount * item.quantity;
-      cart.products = cart.products.filter((p) => p.productId.toString() !== productId);
-    }
-
-    await cart.save();
-    return sendSuccess(res, { cart });
+    return sendSuccess(res, { cart: result.value });
   },
 );
 
 export const clearCart = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
-  const userId = req.authUser!._id;
-  const cart = await cartModel.findOne({ userId });
-  if (!cart) return next(new AppError(req.t.cart.notFound, 404));
+  const result = await cartService.clearCart(req.authUser!._id as Types.ObjectId);
+  if (!result.ok) return next(result.error);
 
-  cart.products = [];
-  cart.subTotal = 0;
-  await cart.save();
-  return sendSuccess(res, { cart });
+  return sendSuccess(res, { cart: result.value });
 });
