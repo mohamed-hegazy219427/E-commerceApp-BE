@@ -65,9 +65,19 @@ export default function createInvoice(invoice: InvoiceData, fileName: string): v
   // Table header
   const tableTop = 250;
   doc.font('Helvetica-Bold');
-  doc.fontSize(10).text('Product', 50, tableTop).text('Unit Price', 250, tableTop).text('Qty', 370, tableTop).text('Total', 450, tableTop);
+  doc
+    .fontSize(10)
+    .text('Product', 50, tableTop)
+    .text('Unit Price', 250, tableTop)
+    .text('Qty', 370, tableTop)
+    .text('Total', 450, tableTop);
   doc.font('Helvetica');
-  doc.strokeColor('#aaaaaa').lineWidth(1).moveTo(50, tableTop + 15).lineTo(550, tableTop + 15).stroke();
+  doc
+    .strokeColor('#aaaaaa')
+    .lineWidth(1)
+    .moveTo(50, tableTop + 15)
+    .lineTo(550, tableTop + 15)
+    .stroke();
 
   // Items
   let y = tableTop + 25;
@@ -88,10 +98,13 @@ export default function createInvoice(invoice: InvoiceData, fileName: string): v
   y += 20;
   doc.text('Paid Amount:', 350, y).text(`${invoice.paidAmount} EGP`, 450, y);
 
-  doc.font('Helvetica').fontSize(10).text('Payment is due within 15 days. Thank you for your business.', 50, 750, {
-    align: 'center',
-    width: 500,
-  });
+  doc
+    .font('Helvetica')
+    .fontSize(10)
+    .text('Payment is due within 15 days. Thank you for your business.', 50, 750, {
+      align: 'center',
+      width: 500,
+    });
 
   doc.end();
 }

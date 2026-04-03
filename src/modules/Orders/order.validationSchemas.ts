@@ -9,7 +9,9 @@ const addressSchema = z.object({
   postalCode: z.string().optional(),
 });
 
-export const createOrderSchema: ValidationSchema = {
+export type AddressDTO = z.infer<typeof addressSchema>;
+
+export const createOrderSchema = {
   body: z.object({
     productId: generalFields.objectId,
     quantity: z.number().min(1),
@@ -18,9 +20,9 @@ export const createOrderSchema: ValidationSchema = {
     paymentMethod: z.enum(['cash', 'card']),
     couponCode: z.string().optional(),
   }),
-};
+} satisfies ValidationSchema;
 
-export const fromCartToOrderSchema: ValidationSchema = {
+export const fromCartToOrderSchema = {
   body: z.object({
     cartId: generalFields.objectId,
     address: addressSchema,
@@ -28,13 +30,20 @@ export const fromCartToOrderSchema: ValidationSchema = {
     paymentMethod: z.enum(['cash', 'card']),
     couponCode: z.string().optional(),
   }),
-};
+} satisfies ValidationSchema;
 
-export const deliverOrderSchema: ValidationSchema = {
+export const deliverOrderSchema = {
   params: z.object({ orderId: generalFields.objectId }),
-};
+} satisfies ValidationSchema;
 
-export const cancelOrderSchema: ValidationSchema = {
+export const cancelOrderSchema = {
   params: z.object({ orderId: generalFields.objectId }),
   body: z.object({ reason: z.string().max(500).optional() }),
-};
+} satisfies ValidationSchema;
+
+//   DTO types     ──
+export type CreateOrderBodyDTO = z.infer<typeof createOrderSchema.body>;
+export type FromCartToOrderBodyDTO = z.infer<typeof fromCartToOrderSchema.body>;
+export type DeliverOrderParamsDTO = z.infer<typeof deliverOrderSchema.params>;
+export type CancelOrderBodyDTO = z.infer<typeof cancelOrderSchema.body>;
+export type CancelOrderParamsDTO = z.infer<typeof cancelOrderSchema.params>;

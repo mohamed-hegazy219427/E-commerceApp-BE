@@ -8,7 +8,12 @@ import { isAuth } from '@middlewares/auth.js';
 const router = Router();
 
 router.post('/', isAuth(cartRoles.addToCart), validate(addToCartSchema), cartController.addToCart);
-router.delete('/', isAuth(cartRoles.deleteFromCart), validate(deleteFromCartSchema), cartController.deleteFromCart);
+router.delete(
+  '/',
+  isAuth(cartRoles.deleteFromCart),
+  validate(deleteFromCartSchema),
+  cartController.deleteFromCart,
+);
 router.delete('/clear', isAuth(cartRoles.clearCart), cartController.clearCart);
 
 export default router;

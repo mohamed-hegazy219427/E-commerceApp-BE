@@ -1,4 +1,3 @@
-import jwt from 'jsonwebtoken';
 import type { Request, Response, NextFunction, RequestHandler } from 'express';
 import { userModel } from '@models/user.model.js';
 import { verifyToken } from '@utils/tokenFunctions.js';
@@ -16,7 +15,7 @@ export const isAuth = (roles: SystemRole[]): RequestHandler => {
       if (!authorization) {
         return next(new AppError(req.t.auth.loginFirst, 401));
       }
-      if (!authorization.startsWith(env.BEARER_TOKEN_KEY)) {
+      if (!authorization.startsWith(env.BEARER_TOKEN_KEY as string)) {
         return next(new AppError(req.t.auth.invalidTokenPrefix, 401));
       }
 
@@ -25,15 +24,12 @@ export const isAuth = (roles: SystemRole[]): RequestHandler => {
         return next(new AppError(req.t.auth.invalidToken, 401));
       }
 
-      let decoded: TokenPayload;
-      try {
-        decoded = verifyToken<TokenPayload>({ token, signature: env.SIGN_IN_TOKEN_SECRET });
-      } catch (err) {
-        if (err instanceof jwt.TokenExpiredError) {
-          return next(new AppError('Token expired, please refresh', 401));
-        }
-        return next(new AppError(req.t.auth.invalidToken, 401));
-      }
+      const tokenResult = verifyToken<TokenPayload>({
+        token,
+        signature: env.SIGN_IN_TOKEN_SECRET as string,
+      });
+      if (!tokenResult.ok) return next(tokenResult.error);
+      const decoded = tokenResult.value;
 
       const user = await userModel.findById(decoded._id);
       if (!user) {
@@ -51,16 +47,16 @@ export const isAuth = (roles: SystemRole[]): RequestHandler => {
   };
 };
 
-// ─── GraphQL auth helper (throws instead of calling next) ───────────────────
+//   GraphQL auth helper (throws instead of calling next)       ─
 export const isAuthQl = async (roles: SystemRole[], token: string): Promise<IUserDocument> => {
   if (!token) throw new Error('No token provided');
 
-  let decoded: TokenPayload;
-  try {
-    decoded = verifyToken<TokenPayload>({ token, signature: env.SIGN_IN_TOKEN_SECRET });
-  } catch {
-    throw new Error('Invalid or expired token');
-  }
+  const tokenResult = verifyToken<TokenPayload>({
+    token,
+    signature: env.SIGN_IN_TOKEN_SECRET as string,
+  });
+  if (!tokenResult.ok) throw tokenResult.error;
+  const decoded = tokenResult.value;
 
   const user = await userModel.findById(decoded._id);
   if (!user) throw new Error('User not found');

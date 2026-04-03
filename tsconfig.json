@@ -17,16 +17,18 @@
     "allowSyntheticDefaultImports": true,
     "baseUrl": ".",
     "paths": {
-      "@config/*": ["src/config/*"],
-      "@models/*": ["DB/Models/*"],
-      "@utils/*": ["src/shared/utils/*"],
-      "@services/*": ["src/shared/services/*"],
-      "@middlewares/*": ["src/middlewares/*"],
-      "@modules/*": ["src/modules/*"],
-      "@i18n/*": ["src/i18n/*"],
-      "@types-app/*": ["src/shared/types/*"]
+      "@config/*":     ["src/config/*"],
+      "@models/*":     ["src/database/models/*"],
+      "@utils/*":      ["src/shared/utils/*"],
+      "@services/*":   ["src/shared/services/*"],
+      "@middlewares/*":["src/middlewares/*"],
+      "@modules/*":    ["src/modules/*"],
+      "@i18n/*":       ["src/i18n/*"],
+      "@types-app/*":  ["src/shared/types/*"],
+      "@constants/*":  ["src/shared/constants/*"],
+      "@repository/*": ["src/shared/repository/*"]
     }
   },
-  "include": ["src/**/*", "DB/**/*", "index.ts"],
+  "include": ["src/**/*"],
   "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.spec.ts"]
 }

@@ -7,6 +7,11 @@ import { addReviewSchema } from './review.validationSchemas.js';
 
 const router = Router();
 
-router.post('/', isAuth(reviewRoles.addReview), validate(addReviewSchema), reviewController.addReview);
+router.post(
+  '/',
+  isAuth(reviewRoles.addReview),
+  validate(addReviewSchema),
+  reviewController.addReview,
+);
 
 export default router;

@@ -3,13 +3,14 @@ import path from 'path';
 import { config } from 'dotenv';
 import mongoose from 'mongoose';
 
-// Load env from config/config.env (keep the original path)
-config({ path: path.resolve('./config/config.env') });
+// Load env from src/config/config.env
+config({ path: path.resolve('./src/config/config.env') });
 
-import { env } from './src/config/env.js';
-import { connectDB } from './src/config/db.js';
-import { createApp, startCronJobs } from './src/intiateApp.js';
-import { logger } from './src/shared/services/logger.js';
+import { env } from './config/env.js';
+import { connectDB } from './config/db.js';
+import { createApp, startCronJobs } from './app.js';
+import { logger } from './shared/services/logger.js';
+import { ProcessSignals } from '@constants/index.js';
 
 async function bootstrap(): Promise<void> {
   // Connect to DB — fail fast if unavailable
@@ -24,7 +25,7 @@ async function bootstrap(): Promise<void> {
   // Start scheduled jobs
   startCronJobs();
 
-  // ── Graceful shutdown ────────────────────────────────────────────────────
+  // ── Graceful shutdown                  ─
   const shutdown = async (signal: string): Promise<void> => {
     logger.info(`${signal} received — shutting down gracefully`);
     server.close(async () => {
@@ -33,11 +34,14 @@ async function bootstrap(): Promise<void> {
       process.exit(0);
     });
     // Force exit after 10s
-    setTimeout(() => { logger.error('Forced shutdown after timeout'); process.exit(1); }, 10_000);
+    setTimeout(() => {
+      logger.error('Forced shutdown after timeout');
+      process.exit(1);
+    }, 10_000);
   };
 
-  process.on('SIGTERM', () => shutdown('SIGTERM'));
-  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on(ProcessSignals.SIGTERM, () => shutdown(ProcessSignals.SIGTERM));
+  process.on(ProcessSignals.SIGINT, () => shutdown(ProcessSignals.SIGINT));
   process.on('unhandledRejection', (reason) => {
     logger.error('Unhandled Rejection', { reason });
     process.exit(1);

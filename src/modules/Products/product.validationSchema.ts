@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { generalFields } from '@middlewares/validation.js';
 import type { ValidationSchema } from '@middlewares/validation.js';
 
-export const addProductSchema: ValidationSchema = {
+export const addProductSchema = {
   body: z.object({
     title: z.string().trim().min(2).max(200),
     desc: z.string().max(2000).optional(),
@@ -16,9 +16,9 @@ export const addProductSchema: ValidationSchema = {
     brandId: generalFields.objectId,
     subCategoryId: generalFields.objectId,
   }),
-};
+} satisfies ValidationSchema;
 
-export const updateProductSchema: ValidationSchema = {
+export const updateProductSchema = {
   body: z.object({
     title: z.string().trim().min(2).max(200).optional(),
     desc: z.string().max(2000).optional(),
@@ -33,4 +33,10 @@ export const updateProductSchema: ValidationSchema = {
     newBrandId: generalFields.objectId.optional(),
     newSubCategoryId: generalFields.objectId.optional(),
   }),
-};
+} satisfies ValidationSchema;
+
+//   DTO types     ──
+export type AddProductBodyDTO = z.infer<typeof addProductSchema.body>;
+export type AddProductQueryDTO = z.infer<typeof addProductSchema.query>;
+export type UpdateProductBodyDTO = z.infer<typeof updateProductSchema.body>;
+export type UpdateProductQueryDTO = z.infer<typeof updateProductSchema.query>;

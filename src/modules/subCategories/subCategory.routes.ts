@@ -4,7 +4,11 @@ import { subCategoryRoles } from './subCategory.endpoints.js';
 import { multerCloudFunction } from '@services/multerCloud.js';
 import { allowedExtensions } from '@utils/allowedExtensions.js';
 import { validate } from '@middlewares/validation.js';
-import { createSubCategorySchema, updateSubCategorySchema, deleteSubCategorySchema } from './subCategory.validationSchemas.js';
+import {
+  createSubCategorySchema,
+  updateSubCategorySchema,
+  deleteSubCategorySchema,
+} from './subCategory.validationSchemas.js';
 import { isAuth } from '@middlewares/auth.js';
 
 const router = Router();

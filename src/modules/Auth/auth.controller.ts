@@ -13,6 +13,16 @@ import otpGenerator from 'otp-generator';
 import { OAuth2Client } from 'google-auth-library';
 import { customAlphabet } from 'nanoid';
 import type { Request, Response, NextFunction } from 'express';
+import type { TypedRequest } from '@types-app/index.js';
+import type {
+  SignUpBodyDTO,
+  LoginBodyDTO,
+  ConfirmEmailParamsDTO,
+  ForgetPasswordBodyDTO,
+  ResetPasswordBodyDTO,
+  ResetPasswordParamsDTO,
+  LoginWithGoogleBodyDTO,
+} from './auth.validationSchemas.js';
 
 const nanoid = customAlphabet('abcdefghijklmnopqrstuvwxyz0123456789', 6);
 
@@ -21,12 +31,12 @@ const REFRESH_TOKEN_DAYS = 7;
 const issueTokens = async (userId: string, email: string, role: string) => {
   const accessToken = generateToken({
     payload: { _id: userId, email, role },
-    signature: env.SIGN_IN_TOKEN_SECRET,
+    signature: env.SIGN_IN_TOKEN_SECRET as string,
     expiresIn: '15m',
   });
   const refreshTokenRaw = generateToken({
     payload: { _id: userId },
-    signature: env.REFRESH_TOKEN_SECRET,
+    signature: env.REFRESH_TOKEN_SECRET as string,
     expiresIn: `${REFRESH_TOKEN_DAYS}d`,
   });
   const expiresAt = new Date(Date.now() + REFRESH_TOKEN_DAYS * 24 * 60 * 60 * 1000);
@@ -34,9 +44,10 @@ const issueTokens = async (userId: string, email: string, role: string) => {
   return { accessToken, refreshTokenRaw };
 };
 
-// ─── Sign Up ────────────────────────────────────────────────────────────────
-export const signUp = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
-  const { userName, email, password, address, gender, age, phoneNumber, role } = req.body as Record<string, string>;
+//   Sign Up     ──
+export const signUp = asyncHandler(async (_req: Request, res: Response, next: NextFunction) => {
+  const req = _req as TypedRequest<SignUpBodyDTO>;
+  const { userName, email, password, address, gender, age, phoneNumber, role } = req.body;
 
   if (await userModel.findOne({ email })) {
     return next(new AppError(req.t.auth.emailExists, 409));
@@ -44,7 +55,7 @@ export const signUp = asyncHandler(async (req: Request, res: Response, next: Nex
 
   const token = generateToken({
     payload: { email },
-    signature: env.CONFIRMATION_EMAIL_TOKEN,
+    signature: env.CONFIRMATION_EMAIL_TOKEN as string,
     expiresIn: '1h',
   });
 
@@ -52,40 +63,70 @@ export const signUp = asyncHandler(async (req: Request, res: Response, next: Nex
   const sent = await sendEmailService({
     to: email,
     subject: 'Confirm your email',
-    message: emailTemplate({ link: confirmationLink, linkData: 'Confirm Email', subject: 'Confirm your email' }),
+    message: emailTemplate({
+      link: confirmationLink,
+      linkData: 'Confirm Email',
+      subject: 'Confirm your email',
+    }),
   });
 
   if (!sent) return next(new AppError(req.t.auth.failConfirmEmail, 500));
 
-  const user = await userModel.create({ userName, email, password, address, gender, age, phoneNumber, role });
+  const user = await userModel.create({
+    userName,
+    email,
+    password,
+    address,
+    gender,
+    age,
+    phoneNumber,
+    role,
+  });
 
   return sendSuccess(res, { userId: user._id }, req.t.auth.signupDone, 201);
 });
 
-// ─── Confirm Email ───────────────────────────────────────────────────────────
-export const confirmEmail = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
-  const { token } = req.params;
-  const { email } = verifyToken<{ email: string }>({ token, signature: env.CONFIRMATION_EMAIL_TOKEN });
+//   Confirm Email
+export const confirmEmail = asyncHandler(
+  async (_req: Request, res: Response, next: NextFunction) => {
+    const req = _req as TypedRequest<
+      Record<string, never>,
+      Record<string, string>,
+      ConfirmEmailParamsDTO
+    >;
+    const { token } = req.params;
 
-  const user = await userModel.findOne({ email });
-  if (!user) return next(new AppError(req.t.auth.invalidEmail, 400));
-  if (user.isConfirmed) return next(new AppError(req.t.auth.alreadyConfirmed, 400));
+    const tokenResult = verifyToken<{ email: string }>({
+      token,
+      signature: env.CONFIRMATION_EMAIL_TOKEN as string,
+    });
+    if (!tokenResult.ok) return next(tokenResult.error);
+    const { email } = tokenResult.value;
 
-  await user.updateOne({ isConfirmed: true });
-  return sendSuccess(res, null, req.t.auth.confirmedDone);
-});
+    const user = await userModel.findOne({ email });
+    if (!user) return next(new AppError(req.t.auth.invalidEmail, 400));
+    if (user.isConfirmed) return next(new AppError(req.t.auth.alreadyConfirmed, 400));
 
-// ─── Login ───────────────────────────────────────────────────────────────────
-export const logIn = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
-  const { email, password } = req.body as { email: string; password: string };
+    await user.updateOne({ isConfirmed: true });
+    return sendSuccess(res, null, req.t.auth.confirmedDone);
+  },
+);
+
+//   Login      ──
+export const logIn = asyncHandler(async (_req: Request, res: Response, next: NextFunction) => {
+  const req = _req as TypedRequest<LoginBodyDTO>;
+  const { email, password } = req.body;
 
   const user = await userModel.findOne({ email });
   if (!user) return next(new AppError(req.t.auth.invalidEmail, 400));
   if (!user.isConfirmed) return next(new AppError(req.t.auth.notConfirmed, 400));
-  if (!compareSync(password, user.password)) return next(new AppError(req.t.auth.invalidPassword, 400));
+  if (!compareSync(password, user.password))
+    return next(new AppError(req.t.auth.invalidPassword, 400));
 
   const { accessToken, refreshTokenRaw } = await issueTokens(
-    String(user._id), user.email, user.role,
+    String(user._id),
+    user.email,
+    user.role,
   );
 
   await user.updateOne({ status: 'Online' });
@@ -100,29 +141,36 @@ export const logIn = asyncHandler(async (req: Request, res: Response, next: Next
   return sendSuccess(res, { accessToken }, req.t.auth.loginDone);
 });
 
-// ─── Refresh Token ────────────────────────────────────────────────────────────
-export const refreshToken = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
-  const token = req.cookies?.refreshToken as string | undefined;
-  if (!token) return next(new AppError(req.t.auth.loginFirst, 401));
+//   Refresh Token    ─
+export const refreshToken = asyncHandler(
+  async (req: Request, res: Response, next: NextFunction) => {
+    const token = req.cookies?.refreshToken as string | undefined;
+    if (!token) return next(new AppError(req.t.auth.loginFirst, 401));
 
-  const stored = await refreshTokenModel.findOne({ token, isRevoked: false });
-  if (!stored) return next(new AppError(req.t.auth.invalidToken, 401));
+    const stored = await refreshTokenModel.findOne({ token, isRevoked: false });
+    if (!stored) return next(new AppError(req.t.auth.invalidToken, 401));
 
-  const decoded = verifyToken<{ _id: string }>({ token, signature: env.REFRESH_TOKEN_SECRET });
-  const user = await userModel.findById(decoded._id);
-  if (!user) return next(new AppError(req.t.auth.pleaseSignup, 401));
+    const decoded = verifyToken<{ _id: string }>({
+      token,
+      signature: env.REFRESH_TOKEN_SECRET as string,
+    });
+    if (!decoded.ok) return next(decoded.error);
 
-  const accessToken = generateToken({
-    payload: { _id: String(user._id), email: user.email, role: user.role },
-    signature: env.SIGN_IN_TOKEN_SECRET,
-    expiresIn: '15m',
-  });
+    const user = await userModel.findById(decoded.value._id);
+    if (!user) return next(new AppError(req.t.auth.pleaseSignup, 401));
 
-  return sendSuccess(res, { accessToken }, req.t.auth.tokenRefreshed);
-});
+    const accessToken = generateToken({
+      payload: { _id: String(user._id), email: user.email, role: user.role },
+      signature: env.SIGN_IN_TOKEN_SECRET as string,
+      expiresIn: '15m',
+    });
 
-// ─── Logout ───────────────────────────────────────────────────────────────────
-export const logout = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+    return sendSuccess(res, { accessToken }, req.t.auth.tokenRefreshed);
+  },
+);
+
+//   Logout      ──
+export const logout = asyncHandler(async (req: Request, res: Response) => {
   const token = req.cookies?.refreshToken as string | undefined;
   if (token) {
     await refreshTokenModel.findOneAndUpdate({ token }, { isRevoked: true });
@@ -131,79 +179,111 @@ export const logout = asyncHandler(async (req: Request, res: Response, next: Nex
   return sendSuccess(res, null, req.t.auth.logoutDone);
 });
 
-// ─── Forget Password ──────────────────────────────────────────────────────────
-export const forgetPassword = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
-  const { email } = req.body as { email: string };
-  const user = await userModel.findOne({ email });
-  if (!user) return next(new AppError(req.t.auth.invalidEmail, 400));
+//   Forget Password   ──
+export const forgetPassword = asyncHandler(
+  async (_req: Request, res: Response, next: NextFunction) => {
+    const req = _req as TypedRequest<ForgetPasswordBodyDTO>;
+    const { email } = req.body;
 
-  const otp = otpGenerator.generate(4, { upperCaseAlphabets: false, specialChars: false });
-  const token = generateToken({ payload: { email, otp }, expiresIn: '1h', signature: env.RESET_PASSWORD_SIGNATURE });
+    const user = await userModel.findOne({ email });
+    if (!user) return next(new AppError(req.t.auth.invalidEmail, 400));
 
-  const sent = await sendEmailService({
-    to: email,
-    subject: 'Reset your password',
-    message: emailTemplate({ subject: 'Reset Password', otp }),
-  });
-  if (!sent) return next(new AppError(req.t.auth.failSendResetEmail, 500));
-
-  await user.updateOne({ forgetCode: otp });
-  return sendSuccess(res, { resetPasswordToken: token }, req.t.auth.checkEmail);
-});
-
-// ─── Reset Password ───────────────────────────────────────────────────────────
-export const resetPassword = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
-  const { token } = req.params;
-  const { newPassword, otp } = req.body as { newPassword: string; otp: string };
-
-  const decoded = verifyToken<{ email: string; otp: string }>({ token, signature: env.RESET_PASSWORD_SIGNATURE });
-  if (otp !== decoded.otp) return next(new AppError(req.t.auth.invalidOtp, 400));
-
-  const user = await userModel.findOne({ email: decoded.email, forgetCode: otp });
-  if (!user) return next(new AppError(req.t.auth.alreadyResetPassword, 400));
-
-  user.password = newPassword;
-  user.forgetCode = undefined;
-  await user.save();
-
-  return sendSuccess(res, null, req.t.auth.passwordResetSuccess);
-});
-
-// ─── Login with Google ────────────────────────────────────────────────────────
-export const loginWithGoogle = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
-  const { idToken } = req.body as { idToken: string };
-  const client = new OAuth2Client(env.GOOGLE_CLIENT_ID);
-
-  const ticket = await client.verifyIdToken({ idToken, audience: env.GOOGLE_CLIENT_ID });
-  const payload = ticket.getPayload();
-  if (!payload?.email_verified || !payload.email) {
-    return next(new AppError(req.t.auth.invalidEmail, 400));
-  }
-
-  const { email, name } = payload;
-  let user = await userModel.findOne({ email });
-
-  if (!user) {
-    user = await userModel.create({
-      userName: name ?? email.split('@')[0],
-      email,
-      password: nanoid(),
-      provider: 'google',
-      isConfirmed: true,
-      phoneNumber: '0000000000',
-      role: systemRoles.USER,
+    const otp = otpGenerator.generate(4, {
+      upperCaseAlphabets: false,
+      specialChars: false,
     });
-  }
+    const token = generateToken({
+      payload: { email, otp },
+      expiresIn: '1h',
+      signature: env.RESET_PASSWORD_SIGNATURE as string,
+    });
 
-  const { accessToken, refreshTokenRaw } = await issueTokens(String(user._id), user.email, user.role);
-  await user.updateOne({ provider: 'google', status: 'Online' });
+    const sent = await sendEmailService({
+      to: email,
+      subject: 'Reset your password',
+      message: emailTemplate({ subject: 'Reset Password', otp }),
+    });
+    if (!sent) return next(new AppError(req.t.auth.failSendResetEmail, 500));
 
-  res.cookie('refreshToken', refreshTokenRaw, {
-    httpOnly: true,
-    secure: env.isProd,
-    sameSite: 'strict',
-    maxAge: REFRESH_TOKEN_DAYS * 24 * 60 * 60 * 1000,
-  });
+    await user.updateOne({ forgetCode: otp });
+    return sendSuccess(res, { resetPasswordToken: token }, req.t.auth.checkEmail);
+  },
+);
 
-  return sendSuccess(res, { accessToken }, req.t.auth.loginDone);
-});
+//   Reset Password
+export const resetPassword = asyncHandler(
+  async (_req: Request, res: Response, next: NextFunction) => {
+    const req = _req as TypedRequest<
+      ResetPasswordBodyDTO,
+      Record<string, string>,
+      ResetPasswordParamsDTO
+    >;
+    const { token } = req.params;
+    const { newPassword, otp } = req.body;
+
+    const decoded = verifyToken<{ email: string; otp: string }>({
+      token,
+      signature: env.RESET_PASSWORD_SIGNATURE as string,
+    });
+    if (!decoded.ok) return next(decoded.error);
+    if (otp !== decoded.value.otp) return next(new AppError(req.t.auth.invalidOtp, 400));
+
+    const user = await userModel.findOne({ email: decoded.value.email, forgetCode: otp });
+    if (!user) return next(new AppError(req.t.auth.alreadyResetPassword, 400));
+
+    user.password = newPassword;
+    user.forgetCode = undefined;
+    await user.save();
+
+    return sendSuccess(res, null, req.t.auth.passwordResetSuccess);
+  },
+);
+
+//   Login with Google
+export const loginWithGoogle = asyncHandler(
+  async (_req: Request, res: Response, next: NextFunction) => {
+    const req = _req as TypedRequest<LoginWithGoogleBodyDTO>;
+    const { idToken } = req.body;
+
+    const client = new OAuth2Client(env.GOOGLE_CLIENT_ID);
+    const ticket = await client.verifyIdToken({
+      idToken,
+      audience: env.GOOGLE_CLIENT_ID,
+    });
+    const payload = ticket.getPayload();
+    if (!payload?.email_verified || !payload.email) {
+      return next(new AppError(req.t.auth.invalidEmail, 400));
+    }
+
+    const { email, name } = payload;
+    let user = await userModel.findOne({ email });
+
+    if (!user) {
+      user = await userModel.create({
+        userName: name ?? email.split('@')[0],
+        email,
+        password: nanoid(),
+        provider: 'google',
+        isConfirmed: true,
+        phoneNumber: '0000000000',
+        role: systemRoles.USER,
+      });
+    }
+
+    const { accessToken, refreshTokenRaw } = await issueTokens(
+      String(user._id),
+      user.email,
+      user.role,
+    );
+    await user.updateOne({ provider: 'google', status: 'Online' });
+
+    res.cookie('refreshToken', refreshTokenRaw, {
+      httpOnly: true,
+      secure: env.isProd,
+      sameSite: 'strict',
+      maxAge: REFRESH_TOKEN_DAYS * 24 * 60 * 60 * 1000,
+    });
+
+    return sendSuccess(res, { accessToken }, req.t.auth.loginDone);
+  },
+);

@@ -5,10 +5,13 @@ import reviewModel from '@models/review.model.js';
 import { asyncHandler } from '@utils/asyncHandler.js';
 import { sendSuccess } from '@utils/response.js';
 import { AppError } from '@utils/AppError.js';
+import type { TypedRequest } from '@types-app/index.js';
+import type { AddReviewBodyDTO } from './review.validationSchemas.js';
 
-export const addReview = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+export const addReview = asyncHandler(async (_req: Request, res: Response, next: NextFunction) => {
+  const req = _req as TypedRequest<AddReviewBodyDTO>;
   const userId = req.authUser!._id;
-  const { productId, comment, rate } = req.body as { productId: string; comment?: string; rate: number };
+  const { productId, comment, rate } = req.body;
 
   const product = await productModel.findById(productId);
   if (!product) return next(new AppError(req.t.review.notFound, 404));

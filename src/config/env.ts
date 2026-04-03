@@ -1,5 +1,13 @@
 import { z } from 'zod';
 
+//   Secret branded type  ─
+// Prevents secrets from being accidentally logged or serialized.
+// Assign with: secret('raw_value')
+// Usage: env.STRIPE_SECRET_KEY as string  (when you genuinely need the raw value)
+//
+type Secret = string & { readonly __brand: 'Secret' };
+const secret = (s: string): Secret => s as Secret;
+
 const envSchema = z.object({
   PORT: z.string().default('3000'),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
@@ -56,12 +64,29 @@ if (!_parsed.success) {
   process.exit(1);
 }
 
-export const env = {
-  ..._parsed.data,
-  PORT: parseInt(_parsed.data.PORT, 10),
-  SALT_ROUNDS: parseInt(_parsed.data.SALT_ROUNDS, 10),
-  isProd: _parsed.data.NODE_ENV === 'production',
-  isDev: _parsed.data.NODE_ENV === 'development',
-};
+const _data = _parsed.data;
+
+//   Parsed & frozen env object                ──
+// Secrets use the branded Secret type to prevent accidental logging/serialization.
+// Object.freeze prevents runtime mutation of config values.
+//
+export const env = Object.freeze({
+  ..._data,
+  PORT: parseInt(_data.PORT, 10),
+  SALT_ROUNDS: parseInt(_data.SALT_ROUNDS, 10),
+  isProd: _data.NODE_ENV === 'production',
+  isDev: _data.NODE_ENV === 'development',
+  // Branded secrets — not printable as plain strings
+  SIGN_IN_TOKEN_SECRET: secret(_data.SIGN_IN_TOKEN_SECRET),
+  REFRESH_TOKEN_SECRET: secret(_data.REFRESH_TOKEN_SECRET),
+  CONFIRMATION_EMAIL_TOKEN: secret(_data.CONFIRMATION_EMAIL_TOKEN),
+  RESET_PASSWORD_SIGNATURE: secret(_data.RESET_PASSWORD_SIGNATURE),
+  ORDER_TOKEN: secret(_data.ORDER_TOKEN),
+  DEFAULT_TOKEN_SIGNATURE: secret(_data.DEFAULT_TOKEN_SIGNATURE),
+  STRIPE_SECRET_KEY: secret(_data.STRIPE_SECRET_KEY),
+  STRIPE_WEBHOOK_SECRET: secret(_data.STRIPE_WEBHOOK_SECRET),
+  CLOUDINARY_API_SECRET: secret(_data.CLOUDINARY_API_SECRET),
+  EMAIL_PASSWORD: secret(_data.EMAIL_PASSWORD),
+});
 
 export type Env = typeof env;
